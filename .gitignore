@@ -1,2 +1,4 @@
 *.beam
 *.devcontainer
+lex.erl 
+grm.erl
