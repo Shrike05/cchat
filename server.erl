@@ -3,6 +3,7 @@
 
 -record(server_st, {
     server_atom,
+    users,
     channels
 }).
 
@@ -19,7 +20,7 @@ start(ServerAtom) ->
     % - Register this process to ServerAtom
     % - Return the process ID
     genserver:start(
-        ServerAtom, #server_st{server_atom = ServerAtom, channels = []}, fun await_message/2
+        ServerAtom, #server_st{server_atom = ServerAtom, users = #{}, channels = []}, fun await_message/2
     ).
 
 await_message(State, Data) ->
@@ -32,6 +33,8 @@ await_message(State, Data) ->
             ),
             Channels = State#server_st.channels,
             {reply, ok, State#server_st{channels = [Channel | Channels]}};
+        {get_channels} ->
+            {reply, State#server_st.channels, State};
         _ ->
             {reply, ok, State}
     end.
@@ -102,11 +105,14 @@ get_channel_atom(ServerAtom, Channel) ->
 stop(ServerAtom) ->
     % TODO Implement function
     % Return ok
+    Channels = genserver:request(ServerAtom, {get_channels}),
+    stop_channels(ServerAtom, Channels),
     genserver:stop(ServerAtom),
     ok.
 
-stop_channels([Channel | Channels]) ->
-    genserver:stop(Channel),
-    stop_channels(Channels);
-stop_channels([]) ->
+stop_channels(ServerAtom, [Channel | Channels]) ->
+    ChannelAtom = get_channel_atom(ServerAtom, Channel),
+    genserver:stop(ChannelAtom),
+    stop_channels(ServerAtom, Channels);
+stop_channels(_, []) ->
     ok.
