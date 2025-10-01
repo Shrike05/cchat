@@ -22,6 +22,10 @@ await_message(State, Data) ->
         {message_send, Pid, Channel, Nick, Msg} ->
             handle(message_send, {State, Pid, Channel, Nick, Msg}),
             {reply, ok, State};
+
+        {leave, Pid, Channel} ->
+            NewState = handle(leave, {State, Pid, Channel}),
+            {reply, ok, NewState};
         _ ->
             {reply, ok, State}
     end.
@@ -35,6 +39,12 @@ handle(join, {State, Pid, Channel}) ->
         false ->
             maps:put(Channel, [Pid], State)
     end;
+
+handle(leave, {State, Pid, Channel}) -> 
+    Pids = maps:get(Channel, State),
+    NewPids = [X || X <- Pids, X =/= Pid],
+    New_State = maps:put(Channel, NewPids, State),
+    New_State;
 
 
 handle(message_send, {State, Pid, Channel, Nick, Msg}) ->

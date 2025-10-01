@@ -35,7 +35,7 @@ handle(St, {join, Channel}) ->
 % Leave channel
 handle(St, {leave, Channel}) ->
     % TODO: Implement this function
-    % {reply, ok, St} ;
+    genserver:request(St#client_st.server, {leave, self(), Channel}),
     {reply, ok, St} ;
 
 % Sending message (from GUI, to channel)
