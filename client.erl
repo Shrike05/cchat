@@ -53,9 +53,10 @@ handle(St, {join, Channel}) ->
     ChannelAtom = get_channel_atom(St#client_st.server, Channel),
     case whereis(ChannelAtom) of
         undefined ->
-            Response = make_request(St#client_st.server, {join, self(), Channel}),
+            Response = make_request(St#client_st.server, {join, self(), St#client_st.nick, Channel}),
             {reply, Response, St};
         _ ->
+            make_request(St#client_st.server, {join, St#client_st.nick}),
             Response = make_request(ChannelAtom, {join, self()}),
             {reply, Response, St}
     end;
@@ -78,7 +79,14 @@ handle(St, {message_send, Channel, Msg}) ->
 % This case is only relevant for the distinction assignment!
 % Change nick (no check, local only)
 handle(St, {nick, NewNick}) ->
-    {reply, ok, St#client_st{nick = NewNick}};
+    Response = make_request(St#client_st.server, {new_nick, St#client_st.nick, NewNick}),
+    io:fwrite("~p~n", [Response]),
+    case Response of
+        ok ->
+            {reply, Response, St#client_st{nick = NewNick}};
+        _ ->
+            {reply, Response, St}
+    end;
 % ---------------------------------------------------------------------------
 % The cases below do not need to be changed...
 % But you should understand how they work!

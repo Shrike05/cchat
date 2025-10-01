@@ -1,5 +1,5 @@
 -module(server).
--export([start/1, stop/1, await_message/2, channel/2]).
+-export([start/1, stop/1, server/2, channel/2]).
 
 -record(server_st, {
     server_atom,
@@ -20,21 +20,34 @@ start(ServerAtom) ->
     % - Register this process to ServerAtom
     % - Return the process ID
     genserver:start(
-        ServerAtom, #server_st{server_atom = ServerAtom, users = #{}, channels = []}, fun await_message/2
+        ServerAtom, #server_st{server_atom = ServerAtom, users = [], channels = []}, fun server/2
     ).
 
-await_message(State, Data) ->
+server(State, Data) ->
     case Data of
-        {join, Pid, Channel} ->
+        {join, Pid, Nick, Channel} ->
             genserver:start(
                 get_channel_atom(State#server_st.server_atom, Channel),
                 #channel_st{channel = Channel, users = [Pid]},
                 fun channel/2
             ),
             Channels = State#server_st.channels,
-            {reply, ok, State#server_st{channels = [Channel | Channels]}};
+            Users = State#server_st.users,
+            {reply, ok, State#server_st{channels = [Channel | Channels], users = [Nick|Users] }};
+        {join, Nick} ->
+            Users = State#server_st.users,
+            {reply, ok, State#server_st{users = [Nick|Users] }};
         {get_channels} ->
             {reply, State#server_st.channels, State};
+        {new_nick, User, NewNick} ->
+            Users = State#server_st.users,
+            case contains(Users, NewNick) of
+                true ->
+                    {reply, {error, nick_taken, "Nickname has been taken"}, State};
+                false ->
+                    NewUsers = replace(Users, User, NewNick),
+                    {reply, ok, State#server_st{users = NewUsers}}
+            end;
         _ ->
             {reply, ok, State}
     end.
@@ -59,22 +72,18 @@ channel(State, Data) ->
                     {reply, {error, user_not_joined, "Can't leave a channel you haven't joined"},
                         State}
             end;
-        {message_send, Pid, Nick, Msg} ->
-            case contains(State#channel_st.users, Pid) of
+        {message_send, User, Nick, Msg} ->
+            case contains(State#channel_st.users, User) of
                 true ->
                     io:format("Got A Message ~p~n", [Msg]),
-                    send_message(message_send, {State, Pid, Nick, Msg}),
+                    Users = State#channel_st.users,
+                    Channel = State#channel_st.channel,
+                    forward_message(Users, User, {message_receive, Channel, Nick, Msg}),
                     {reply, ok, State};
                 false ->
                     {reply, {error, user_not_joined, "You have not joined this channel"}, State}
             end
     end.
-
-send_message(message_send, {State, User, Nick, Msg}) ->
-    Users = State#channel_st.users,
-    Channel = State#channel_st.channel,
-    forward_message(Users, User, {message_receive, Channel, Nick, Msg}),
-    State.
 
 remove_user(ChannelState, Pid) ->
     Pids = ChannelState#channel_st.users,
@@ -96,6 +105,17 @@ contains([User | Users], Target) ->
     Target == User orelse contains(Users, Target);
 contains([], _) ->
     false.
+
+replace([User | Users], Target, NewValue) ->
+    case User == Target of
+        true ->
+            [NewValue | Users];
+        false ->
+            [User | replace(Users, Target, NewValue)]
+    end;        
+replace([], _, _) ->
+    [].
+
 
 get_channel_atom(ServerAtom, Channel) ->
     list_to_atom(atom_to_list(ServerAtom) ++ Channel).
