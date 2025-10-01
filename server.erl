@@ -1,5 +1,5 @@
 -module(server).
--export([start/1, stop/1, await_message/1]).
+-export([start/1, stop/1, await_message/2]).
 
 
 
@@ -10,21 +10,20 @@ start(ServerAtom) ->
     % - Spawn a new process which waits for a message, handles it, then loops infinitely
     % - Register this process to ServerAtom
     % - Return the process ID
-    Pid = spawn(server, await_message, [#{}]),
-    register(ServerAtom, Pid),
-    Pid.
+    genserver:start(ServerAtom, #{}, fun await_message/2).
 
 
-await_message(State) ->
-    receive
+await_message(State, Data) ->
+    case Data of
         {join, Pid, Channel} ->
             NewState = handle(join, {State, Pid, Channel}),
-            await_message(NewState);
+            {reply, ok, NewState};
 
         {message_send, Pid, Channel, Nick, Msg} ->
-            %io:format("Got messsage ~p~n", Msg),
             handle(message_send, {State, Pid, Channel, Nick, Msg}),
-            await_message(State)
+            {reply, ok, State};
+        _ ->
+            {reply, ok, State}
     end.
 
 
@@ -42,13 +41,6 @@ handle(message_send, {State, Pid, Channel, Nick, Msg}) ->
     Users = maps:get(Channel, State),
     forward_message(Users, Pid, {message_receive, Channel, Nick, Msg}).
 
-forward_message([], _, _) -> 
-    ok;
-
-% forward_message( [User | Users], Pid, Package) ->
-%     User ! Package,
-%     forward_message(Users, Pid, Package).
-
 forward_message( [User | Users], Pid, Package) ->
     case User == Pid of
         true ->
@@ -56,14 +48,16 @@ forward_message( [User | Users], Pid, Package) ->
             forward_message(Users, Pid, Package);
         false ->
             io:format("Different Reciever ~p~n ~p~n ", [User, Pid]),
-            User ! Package,
+            genserver:request(User, Package),
             forward_message(Users, Pid, Package)
-    end.
+    end;
 
+forward_message([], _, _) -> 
+    ok.
 
 % Stop the server process registered to the given name,
 % together with any other associated processes
 stop(ServerAtom) ->
     % TODO Implement function
     % Return ok
-    unregister(ServerAtom).
+    gen_server:stop(ServerAtom).

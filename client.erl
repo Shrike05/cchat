@@ -1,5 +1,5 @@
 -module(client).
--export([handle/2, initial_state/3, listener/1]).
+-export([handle/2, initial_state/3]).
 
 % This record defines the structure of the state of a client.
 % Add whatever other fields you need.
@@ -8,13 +8,6 @@
     nick, % nick/username of the client
     server % atom of the chat server
 }).
-
-listener(St) -> 
-    receive
-        {message_receive, Channel, Nick, Msg} ->
-            handle(St, {message_receive, Channel, Nick, Msg}),
-            listener(St)
-    end.
 
 % Return an initial state record. This is called from GUI.
 % Do not change the signature of this function.
@@ -36,8 +29,7 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 % Join channel
 handle(St, {join, Channel}) ->
     % TODO: Implement this function
-    Pid = spawn(client, listener, [St]),
-    St#client_st.server ! {join, Pid, Channel},
+    genserver:request(St#client_st.server, {join, self(), Channel}),
     {reply, ok, St};
 
 % Leave channel
@@ -49,7 +41,7 @@ handle(St, {leave, Channel}) ->
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
     % TODO: Implement this function
-    St#client_st.server ! {message_send, self(), Channel, St#client_st.nick, Msg},
+    genserver:request(St#client_st.server, {message_send, self(), Channel, St#client_st.nick, Msg}),
     {reply, ok, St} ;
 
 % This case is only relevant for the distinction assignment!
