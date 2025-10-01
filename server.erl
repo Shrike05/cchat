@@ -1,8 +1,6 @@
 -module(server).
 -export([start/1, stop/1, await_message/2]).
 
-
-
 % Start a new server process with the given name
 % Do not change the signature of this function.
 start(ServerAtom) ->
@@ -12,26 +10,38 @@ start(ServerAtom) ->
     % - Return the process ID
     genserver:start(ServerAtom, #{}, fun await_message/2).
 
-
 await_message(State, Data) ->
     case Data of
         {join, Pid, Channel} ->
-            NewState = handle(join, {State, Pid, Channel}),
-            {reply, ok, NewState};
-
+            case has_user_joined_channel(State, Channel, Pid) of
+                true ->
+                    {reply, {error, user_already_joined, "You have already joined this channel"},
+                        State};
+                false ->
+                    NewState = handle(join, {State, Pid, Channel}),
+                    {reply, ok, NewState}
+            end;
         {message_send, Pid, Channel, Nick, Msg} ->
-            handle(message_send, {State, Pid, Channel, Nick, Msg}),
-            {reply, ok, State};
-
+            case has_user_joined_channel(State, Channel, Pid) of
+                true ->
+                    handle(message_send, {State, Pid, Channel, Nick, Msg}),
+                    {reply, ok, State};
+                false ->
+                    {reply, {error, user_not_joined, "You have not joined this channel"}, State}
+            end;
         {leave, Pid, Channel} ->
-            NewState = handle(leave, {State, Pid, Channel}),
-            {reply, ok, NewState};
+            case has_user_joined_channel(State, Channel, Pid) of
+                true ->
+                    NewState = handle(leave, {State, Pid, Channel}),
+                    {reply, ok, NewState};
+                false ->
+                    {reply, {error, user_not_joined, "You have not joined this channel"}, State}
+            end;
         _ ->
             {reply, ok, State}
     end.
 
-
-handle(join, {State, Pid, Channel}) ->    
+handle(join, {State, Pid, Channel}) ->
     case maps:is_key(Channel, State) of
         true ->
             Value = maps:get(Channel, State),
@@ -39,19 +49,17 @@ handle(join, {State, Pid, Channel}) ->
         false ->
             maps:put(Channel, [Pid], State)
     end;
-
-handle(leave, {State, Pid, Channel}) -> 
+handle(leave, {State, Pid, Channel}) ->
     Pids = maps:get(Channel, State),
     NewPids = [X || X <- Pids, X =/= Pid],
     New_State = maps:put(Channel, NewPids, State),
     New_State;
-
-
 handle(message_send, {State, Pid, Channel, Nick, Msg}) ->
     Users = maps:get(Channel, State),
-    forward_message(Users, Pid, {message_receive, Channel, Nick, Msg}).
+    forward_message(Users, Pid, {message_receive, Channel, Nick, Msg}),
+    State.
 
-forward_message( [User | Users], Pid, Package) ->
+forward_message([User | Users], Pid, Package) ->
     case User == Pid of
         true ->
             io:format("Same Reciever"),
@@ -61,13 +69,27 @@ forward_message( [User | Users], Pid, Package) ->
             genserver:request(User, Package),
             forward_message(Users, Pid, Package)
     end;
-
-forward_message([], _, _) -> 
+forward_message([], _, _) ->
     ok.
 
+has_user_joined_channel(State, Channel, User) ->
+    case maps:is_key(Channel, State) of
+        true ->
+            Users = maps:get(Channel, State),
+            Result = contains(Users, User),
+            Result;
+        false ->
+            false
+    end.
+
+contains([User | Users], Target) ->
+    Target == User orelse contains(Users, Target);
+contains([], _) ->
+    false.
 % Stop the server process registered to the given name,
 % together with any other associated processes
 stop(ServerAtom) ->
     % TODO Implement function
     % Return ok
-    gen_server:stop(ServerAtom).
+    genserver:stop(ServerAtom),
+    ok.
