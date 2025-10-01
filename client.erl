@@ -29,34 +29,52 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 %   - Data is what is sent to GUI, either the atom `ok` or a tuple {error, Atom, "Error message"}
 %   - NewState is the updated state of the client
 
-make_request(St, Msg) ->
-    make_request_with_custom_error(St, Msg, {error, server_not_reached, "Server not available"}).
+make_request(Server, Msg) ->
+    make_request_with_custom_error(
+        Server, Msg, {error, server_not_reached, "Server not available"}
+    ).
 
-make_request_with_custom_error(St, Msg, NoServerError) ->
-    case whereis(St#client_st.server) of
+make_request_with_custom_error(Server, Msg, NoServerError) ->
+    case whereis(Server) of
         undefined ->
-            {reply, NoServerError, St};
+            NoServerError;
         _ ->
-            try genserver:request(St#client_st.server, Msg) of
+            try genserver:request(Server, Msg) of
                 Reply ->
-                    {reply, Reply, St}
+                    Reply
             catch
                 _ ->
-                    {reply, {error, server_not_reached, "Server not available"}, St}
+                    {error, server_not_reached, "Server not available"}
             end
     end.
 
 % Join channel
 handle(St, {join, Channel}) ->
-    make_request(St, {join, self(), Channel});
+    ChannelAtom = get_channel_atom(St#client_st.server, Channel),
+    case whereis(ChannelAtom) of
+        undefined ->
+            Response = make_request(St#client_st.server, {join, self(), Channel}),
+            {reply, Response, St};
+        _ ->
+            Response = make_request(ChannelAtom, {join, self()}),
+            {reply, Response, St}
+    end;
 
 % Leave channel
 handle(St, {leave, Channel}) ->
-    make_request_with_custom_error(St, {leave, self(), Channel}, ok);
-
+    Response = make_request_with_custom_error(
+        get_channel_atom(St#client_st.server, Channel),
+        {leave, self()},
+        ok
+    ),
+    {reply, Response, St};
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
-    make_request(St, {message_send, self(), Channel, St#client_st.nick, Msg});
+    Response = make_request(
+        get_channel_atom(St#client_st.server, Channel),
+        {message_send, self(), St#client_st.nick, Msg}
+    ),
+    {reply, Response, St};
 % This case is only relevant for the distinction assignment!
 % Change nick (no check, local only)
 handle(St, {nick, NewNick}) ->
@@ -79,3 +97,6 @@ handle(St, quit) ->
 % Catch-all for any unhandled requests
 handle(St, Data) ->
     {reply, {error, not_implemented, "Client does not handle this command"}, St}.
+
+get_channel_atom(ServerAtom, Channel) ->
+    list_to_atom(atom_to_list(ServerAtom) ++ Channel).
