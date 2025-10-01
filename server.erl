@@ -1,6 +1,10 @@
 -module(server).
 -export([start/1, stop/1, await_message/2]).
 
+-record(server_st, {
+    channels
+}).
+
 % Start a new server process with the given name
 % Do not change the signature of this function.
 start(ServerAtom) ->
@@ -8,7 +12,7 @@ start(ServerAtom) ->
     % - Spawn a new process which waits for a message, handles it, then loops infinitely
     % - Register this process to ServerAtom
     % - Return the process ID
-    genserver:start(ServerAtom, #{}, fun await_message/2).
+    genserver:start(ServerAtom, #server_st{channels = #{}}, fun await_message/2).
 
 await_message(State, Data) ->
     case Data of
@@ -46,20 +50,22 @@ await_message(State, Data) ->
     end.
 
 handle(join, {State, Pid, Channel}) ->
-    case maps:is_key(Channel, State) of
+    case maps:is_key(Channel, State#server_st.channels) of
         true ->
-            Value = maps:get(Channel, State),
-            maps:put(Channel, [Pid | Value], State);
+            Value = maps:get(Channel, State#server_st.channels),
+            Channels = maps:put(Channel, [Pid | Value], State#server_st.channels),
+            State#server_st{channels = Channels};
         false ->
-            maps:put(Channel, [Pid], State)
+            Channels = maps:put(Channel, [Pid], State#server_st.channels),
+            State#server_st{channels = Channels}
     end;
 handle(leave, {State, Pid, Channel}) ->
-    Pids = maps:get(Channel, State),
+    Pids = maps:get(Channel, State#server_st.channels),
     NewPids = [X || X <- Pids, X =/= Pid],
-    New_State = maps:put(Channel, NewPids, State),
-    New_State;
+    New_Channels = maps:put(Channel, NewPids, State#server_st.channels),
+    State#server_st{channels = New_Channels};
 handle(message_send, {State, Pid, Channel, Nick, Msg}) ->
-    Users = maps:get(Channel, State),
+    Users = maps:get(Channel, State#server_st.channels),
     forward_message(Users, Pid, {message_receive, Channel, Nick, Msg}),
     State.
 
@@ -77,9 +83,9 @@ forward_message([], _, _) ->
     ok.
 
 has_user_joined_channel(State, Channel, User) ->
-    case maps:is_key(Channel, State) of
+    case maps:is_key(Channel, State#server_st.channels) of
         true ->
-            Users = maps:get(Channel, State),
+            Users = maps:get(Channel, State#server_st.channels),
             Result = contains(Users, User),
             Result;
         false ->
