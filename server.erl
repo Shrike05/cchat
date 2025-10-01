@@ -17,7 +17,7 @@ await_message(State, Data) ->
                 true ->
                     {reply, {error, user_already_joined, "You have already joined this channel"},
                         State};
-                false ->
+                _ ->
                     NewState = handle(join, {State, Pid, Channel}),
                     {reply, ok, NewState}
             end;
@@ -27,7 +27,9 @@ await_message(State, Data) ->
                     handle(message_send, {State, Pid, Channel, Nick, Msg}),
                     {reply, ok, State};
                 false ->
-                    {reply, {error, user_not_joined, "You have not joined this channel"}, State}
+                    {reply, {error, user_not_joined, "You have not joined this channel"}, State};
+                error ->
+                    {reply, {error, server_not_reached, "This channel does not exist"}, State}
             end;
         {leave, Pid, Channel} ->
             case has_user_joined_channel(State, Channel, Pid) of
@@ -35,7 +37,9 @@ await_message(State, Data) ->
                     NewState = handle(leave, {State, Pid, Channel}),
                     {reply, ok, NewState};
                 false ->
-                    {reply, {error, user_not_joined, "You have not joined this channel"}, State}
+                    {reply, {error, user_not_joined, "You have not joined this channel"}, State};
+                error ->
+                    {reply, ok, State}
             end;
         _ ->
             {reply, ok, State}
@@ -79,7 +83,7 @@ has_user_joined_channel(State, Channel, User) ->
             Result = contains(Users, User),
             Result;
         false ->
-            false
+            error
     end.
 
 contains([User | Users], Target) ->

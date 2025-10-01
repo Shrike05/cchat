@@ -30,12 +30,20 @@ initial_state(Nick, GUIAtom, ServerAtom) ->
 %   - NewState is the updated state of the client
 
 make_request(St, Msg) ->
-    try genserver:request(St#client_st.server, Msg) of
-        Reply ->
-            {reply, Reply, St}
-    catch
+    make_request_with_custom_error(St, Msg, {error, server_not_reached, "Server not available"}).
+
+make_request_with_custom_error(St, Msg, NoServerError) ->
+    case whereis(St#client_st.server) of
+        undefined ->
+            {reply, NoServerError, St};
         _ ->
-            {reply, {error, server_not_reached, "Server not available"}, St}
+            try genserver:request(St#client_st.server, Msg) of
+                Reply ->
+                    {reply, Reply, St}
+            catch
+                _ ->
+                    {reply, {error, server_not_reached, "Server not available"}, St}
+            end
     end.
 
 % Join channel
@@ -44,7 +52,7 @@ handle(St, {join, Channel}) ->
 
 % Leave channel
 handle(St, {leave, Channel}) ->
-    make_request(St, {leave, self(), Channel});
+    make_request_with_custom_error(St, {leave, self(), Channel}, ok);
 
 % Sending message (from GUI, to channel)
 handle(St, {message_send, Channel, Msg}) ->
