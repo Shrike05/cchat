@@ -50,17 +50,8 @@ make_request_with_custom_error(Server, Msg, NoServerError) ->
 
 % Join channel
 handle(St, {join, Channel}) ->
-    ChannelAtom = get_channel_atom(St#client_st.server, Channel),
-    case whereis(ChannelAtom) of
-        undefined ->
-            Response = make_request(St#client_st.server, {join, self(), St#client_st.nick, Channel}),
-            {reply, Response, St};
-        _ ->
-            make_request(St#client_st.server, {join, St#client_st.nick}),
-            Response = make_request(ChannelAtom, {join, self()}),
-            {reply, Response, St}
-    end;
-
+    Response = make_request(St#client_st.server, {join, self(), St#client_st.nick, Channel}),
+    {reply, Response, St};
 % Leave channel
 handle(St, {leave, Channel}) ->
     Response = make_request_with_custom_error(
