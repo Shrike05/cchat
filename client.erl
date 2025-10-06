@@ -71,7 +71,6 @@ handle(St, {message_send, Channel, Msg}) ->
 % Change nick (no check, local only)
 handle(St, {nick, NewNick}) ->
     Response = make_request(St#client_st.server, {new_nick, St#client_st.nick, NewNick}),
-    io:fwrite("~p~n", [Response]),
     case Response of
         ok ->
             {reply, Response, St#client_st{nick = NewNick}};
